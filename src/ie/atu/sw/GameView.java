@@ -35,7 +35,8 @@ public class GameView extends JPanel implements ActionListener {
 
 	private static final byte ONE_SET = 1;
 	private static final byte ZERO_SET = 0;
-
+	
+	private int lastMoveDirection = 0;
 	/*
 	 * The 30x20 game grid is implemented using a linked list of 30 elements, where
 	 * each element contains a byte[] of size 20.
@@ -150,6 +151,7 @@ public class GameView extends JPanel implements ActionListener {
 	// Move the plane up or down
 	public void move(int step) {
 		playerRow += step;
+		lastMoveDirection = Integer.compare(step, 0); // Set lastMoveDirection based on the sign of step
 	}
 
 	/*
@@ -190,7 +192,8 @@ public class GameView extends JPanel implements ActionListener {
 			 * double[] trainingRow = sample();
 			 * System.out.println(Arrays.toString(trainingRow));
 			 */
-			collectAndSaveData("sampled_data.csv");
+			double[] trainingRow = sample();
+			collectAndSaveData(trainingRow);
 		}
 	}
 
@@ -219,7 +222,7 @@ public class GameView extends JPanel implements ActionListener {
 	 * Use this method to get a snapshot of the 30x20 matrix of values that make up
 	 * the game grid. The grid is flatmapped into a single dimension double array...
 	 * (somewhat) ready to be used by a neural net. You can experiment around with
-	 * how much of this you actually will need. The plane is always somehere in
+	 * how much of this you actually will need. The plane is always somewhere in
 	 * column PLAYER_COLUMN and you probably do not need any of the columns behind
 	 * this. You can consider all of the columns ahead of PLAYER_COLUMN as your
 	 * horizon and this value can be reduced to save space and time if needed, e.g.
@@ -231,45 +234,51 @@ public class GameView extends JPanel implements ActionListener {
 	 * movement (up, down or straight).
 	 * 
 	 */
+	
+	// 1 = cave wall 
+	//0 = passage
+	
+	// 0 = No Change in movement
+	// 1 = Player moves down
+	// -1 = Player moves up
 	public double[] sample() {
-		var vector = new double[MODEL_WIDTH * MODEL_HEIGHT + 1];
-		var index = 0;
+	    var vector = new double[MODEL_HEIGHT];
 
-		for (byte[] bm : model) {
-			for (byte b : bm) {
-				vector[index] = b;
-				index++;
-			}
-		}
-		return vector;
+	    // Get the column in front of the player
+	    byte[] frontColumn = model.get(PLAYER_COLUMN);
+
+	    // Copy the values from the front column to the vector
+	    for (int i = 0; i < MODEL_HEIGHT; i++) {
+	        vector[i] = frontColumn[i];
+	    }
+
+	    // Remove the oldest column data if the vector is full
+	    if (model.size() > MODEL_WIDTH) {
+	        model.removeFirst();
+	    }
+
+	    return vector;
 	}
 
-	private void collectAndSaveData(String relativeFilePath) {
-		double[] vector = sample(); // Call the existing sample method
 
-		// Define the file path based on the provided relative path
-		String filePath = Paths.get("./savedData/trainingData.csv").toString();
+	private void collectAndSaveData(double[] trainingRow) {
+	    // Define the file path based on the provided relative path
+	    String filePath = Paths.get("./savedData/trainingData.csv").toString();
 
-		try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath))) {
-			// Write header
-			for (int i = 0; i < vector.length - 1; i++) {
-				writer.write("C" + i + ",");
-			}
-			writer.write("C" + (vector.length - 1)); // Last column without a trailing comma
-			writer.newLine();
+	    try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath, true))) {
+	        // Write data
+	        for (int i = 0; i < trainingRow.length - 1; i++) {
+	            writer.write(trainingRow[i] + ",");
+	        }
+	        writer.write(Double.toString(trainingRow[trainingRow.length - 1])); // Last value without a trailing comma
+	        writer.write("," + lastMoveDirection);
+	        writer.newLine();
+	    } catch (IOException e) {
+	        e.printStackTrace(); // Handle the exception
+	    }
 
-			// Write data
-			for (int i = 0; i < vector.length - 1; i++) {
-				writer.write(vector[i] + ",");
-			}
-			writer.write(Double.toString(vector[vector.length - 1])); // Last value without a trailing comma
-			writer.newLine();
-		} catch (IOException e) {
-			e.printStackTrace(); // Handle the exception according to your needs
-		}
-
-		// Optional: Print the sampled data
-		System.out.println(Arrays.toString(vector));
+	    // Print the sampled data
+	    System.out.println(Arrays.toString(trainingRow)+lastMoveDirection);
 	}
 
 	/*
