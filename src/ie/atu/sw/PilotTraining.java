@@ -3,58 +3,57 @@ package ie.atu.sw;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 import jhealy.aicme4j.NetworkBuilderFactory;
 import jhealy.aicme4j.net.Activation;
-import jhealy.aicme4j.net.LayerSize;
 import jhealy.aicme4j.net.Loss;
-import jhealy.aicme4j.net.Output;
 
 public class PilotTraining {
 
-    public void trainModel() throws Exception {
-        try {
-            double[][] data = readAndLabelCSV("./savedData/trainingData.csv");
-            double[][] expected = {}; // You might want to read expected values as well
+	public static void main() throws Exception {
+		new PilotTraining().trainModel();
+		System.out.println("Pilot Training Main Method");
+	}
 
-            var net = NetworkBuilderFactory.getInstance().newNetworkBuilder()
-                    .inputLayer("Input", 2)
-                    .hiddenLayer("Hidden1", Activation.TANH, LayerSize.SUM)
-                    .outputLayer("Output", Activation.TANH, 1)
-                    .train(data, expected, 0.01, 0.95, 100000, 0.00001, Loss.SSE)
-                    .save("./savedData/pilotModel.data")
-                    .build();
+	public void trainModel() throws Exception {
+		System.out.println("In train model method");
+		try {
+			double[][] data = readInCSV("./resources/trainingData.csv");
 
-            System.out.println(net);
-            
-        } catch (Exception e) {
-            // Handle exceptions here or propagate them up based on your needs
-            e.printStackTrace();
-        }
-    }
+			double[][] expected = readInCSV("./resources/lastMoveDirection.csv");
 
-    public double[][] readAndLabelCSV(String filename) throws IOException {
-        try (BufferedReader br = new BufferedReader(new FileReader(filename))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                // Split the line by commas
-                String[] values = line.split(",");
+			System.out.println(expected[0].length);
+			var net = NetworkBuilderFactory.getInstance().newNetworkBuilder().inputLayer("Input", 5)
+					.hiddenLayer("Hidden", Activation.TANH, 5).outputLayer("Output", Activation.TANH, 1)
+					.train(data, expected, 0.001, 0.95, 100000, 0.00001, Loss.SSE).save("./resources/pilotModel.data")
+					.build();
 
-                // Parse each value as a double
-                for (String value : values) {
-                    try {
-                        double doubleValue = Double.parseDouble(value.trim());
-                        // Label the data based on your criteria
-                        String label = (doubleValue == 0.0) ? "dead" : "ok";
-                        // Process the data or store it as needed
-                        System.out.println("Value: " + doubleValue + ", Label: " + label);
-                    } catch (NumberFormatException e) {
-                        // Handle invalid numeric values gracefully (e.g., skip or log them)
-                        System.err.println("Invalid numeric value: " + value);
-                    }
-                }
-            }
-        }
-        return null;
-    }
+			System.out.println(net);
+
+		} catch (Exception e) {
+			// Handle exceptions here or propagate them up based on your needs
+			e.printStackTrace();
+		}
+	}
+
+	private double[][] readInCSV(String filePath) throws IOException {
+		List<double[]> dataList = new ArrayList<>();
+
+		try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				String[] parts = line.split(",");
+				double[] rowData = new double[parts.length];
+				for (int i = 0; i < parts.length; i++) {
+					rowData[i] = Double.parseDouble(parts[i]);
+				}
+				dataList.add(rowData);
+
+			}
+		}
+		return dataList.toArray(new double[0][]);
+	}
+
 }

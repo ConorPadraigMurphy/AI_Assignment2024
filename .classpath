@@ -7,7 +7,5 @@
 		</attributes>
 	</classpathentry>
 	<classpathentry kind="lib" path="C:/Users/Conor/Desktop/Misc/GMIT/Year 4/Sem2/AI/aicme4j.jar"/>
-	<classpathentry kind="lib" path="C:/Users/Conor/Desktop/Misc/GMIT/Year 4/Sem2/AI/encog-core-3.4.jar"/>
-	<classpathentry kind="lib" path="C:/Users/conor/OneDrive/Desktop/Files/College/GMIT/GMIT_Yr4/Semester_2/Artificial Intelligence/encog-core-3.4.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

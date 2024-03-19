@@ -21,6 +21,10 @@ import java.util.LinkedList;
 import javax.swing.JPanel;
 import javax.swing.Timer;
 
+import jhealy.aicme4j.net.Aicme4jUtils;
+import jhealy.aicme4j.net.NeuralNetwork;
+import jhealy.aicme4j.net.Output;
+
 public class GameView extends JPanel implements ActionListener {
 	// Some constants
 	private static final long serialVersionUID = 1L;
@@ -35,12 +39,14 @@ public class GameView extends JPanel implements ActionListener {
 
 	private static final byte ONE_SET = 1;
 	private static final byte ZERO_SET = 0;
-	
+
 	private int lastMoveDirection = 0;
+
 	/*
 	 * The 30x20 game grid is implemented using a linked list of 30 elements, where
 	 * each element contains a byte[] of size 20.
 	 */
+
 	private LinkedList<byte[]> model = new LinkedList<>();
 
 	// These two variables are used by the cavern generator.
@@ -64,11 +70,20 @@ public class GameView extends JPanel implements ActionListener {
 	private Sprite dyingSprite;
 
 	private boolean auto;
+	public NeuralNetwork nn;
 
 	public GameView(boolean auto) throws Exception {
 		this.auto = auto; // Use the autopilot
 		setBackground(Color.LIGHT_GRAY);
 		setDoubleBuffered(true);
+
+		try {
+			String filename = "./resources/pilotModel.data";
+			nn = Aicme4jUtils.load(filename); // Load the neural network
+		} catch (Exception e) {
+			// e.printStackTrace();
+			// Handle any exceptions related to loading the network
+		}
 
 		// Creates a viewing area of 900 x 600 pixels
 		dim = new Dimension(MODEL_WIDTH * SCALING_FACTOR, MODEL_HEIGHT * SCALING_FACTOR);
@@ -121,7 +136,7 @@ public class GameView extends JPanel implements ActionListener {
 
 				if (x == PLAYER_COLUMN && y == playerRow) {
 					if (timer.isRunning()) {
-						g2.drawImage(sprite.getNext(), x1, y1, null);
+						g2.drawImage(sprite.getNext(), x1, y1 - 10, null);
 					} else {
 						g2.drawImage(dyingSprite.getNext(), x1, y1, null);
 					}
@@ -149,9 +164,9 @@ public class GameView extends JPanel implements ActionListener {
 	}
 
 	// Move the plane up or down
-	public void move(int step) {
-		playerRow += step;
-		lastMoveDirection = Integer.compare(step, 0); // Set lastMoveDirection based on the sign of step
+	public void move(int d) {
+		playerRow += d;
+		lastMoveDirection = (int) d; // Set lastMoveDirection based on the sign of step
 	}
 
 	/*
@@ -163,7 +178,24 @@ public class GameView extends JPanel implements ActionListener {
 	 * 
 	 */
 	private void autoMove() {
-		move(current().nextInt(-1, 2)); // Move -1 (up), 0 (nowhere), 1 (down)
+		// move(current().nextInt(-1, 2)); // Move -1 (up), 0 (nowhere), 1 (down)
+		try {
+			var dataSample = sample();
+
+			double dir = nn.process(dataSample, Output.NUMERIC_ROUNDED);
+			for (var d : dataSample) {
+				System.out.print(d + ",");
+
+			}
+			System.out.println();
+
+			System.out.println(dir);
+			move((int) dir);
+
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 
 	// Called every second by the timer
@@ -187,12 +219,14 @@ public class GameView extends JPanel implements ActionListener {
 		 * TIMER_INTERVAL units of time. Use some modular arithmetic as shown below.
 		 * Alternatively, add a key stroke to fire an event that starts the sampling.
 		 */
-		if (time % 10 == 0) {
-			/*
-			 * double[] trainingRow = sample();
-			 * System.out.println(Arrays.toString(trainingRow));
-			 */
-			double[] trainingRow = sample();
+
+		/*
+		 * double[] trainingRow = sample();
+		 * System.out.println(Arrays.toString(trainingRow));
+		 */
+
+		double[] trainingRow = sample();
+		if (!auto) {
 			collectAndSaveData(trainingRow);
 		}
 	}
@@ -234,57 +268,86 @@ public class GameView extends JPanel implements ActionListener {
 	 * movement (up, down or straight).
 	 * 
 	 */
-	
-	// 1 = cave wall 
-	//0 = passage
-	
+
+	// 1 = cave wall
+	// 0 = passage
+
 	// 0 = No Change in movement
 	// 1 = Player moves down
 	// -1 = Player moves up
 	public double[] sample() {
-	    var vector = new double[MODEL_HEIGHT];
+		var vector = new double[4 + 1]; // Increased size to accommodate lastMoveDirection
 
-	    // Get the column in front of the player
-	    byte[] frontColumn = model.get(PLAYER_COLUMN);
+		for (int j = 0; j < 2; j++) {
 
-	    // Copy the values from the front column to the vector
-	    for (int i = 0; i < MODEL_HEIGHT; i++) {
-	        vector[i] = frontColumn[i];
-	    }
+			byte[] frontColumn = model.get(PLAYER_COLUMN + 1 + j);
+			var prevValue = 1;
+			var top = 0;
+			var bott = 0;
 
-	    // Remove the oldest column data if the vector is full
-	    if (model.size() > MODEL_WIDTH) {
-	        model.removeFirst();
-	    }
+			for (int i = 0; i < MODEL_HEIGHT; i++) {
+				if (frontColumn[i] == 1 && prevValue == 1) {
+					top++;
+				} else {
+					break;
+				}
+			}
 
-	    return vector;
+			for (int i = MODEL_HEIGHT - 1; i >= 0; i--) {
+				if (frontColumn[i] == 1 && prevValue == 1) {
+					bott++;
+				} else {
+					break;
+				}
+			}
+
+			vector[0 + j * 2] = bott / 20.0;
+			vector[1 + j * 2] = top / 20.0;
+		}
+
+		vector[4] = playerRow / 20.0;
+
+		// Remove the oldest column data if the vector is full
+		if (model.size() > MODEL_WIDTH) {
+			model.removeFirst();
+		}
+
+		return vector;
 	}
 
-
 	private void collectAndSaveData(double[] trainingRow) {
-	    // Define the file path based on the provided relative path
-	    String filePath = Paths.get("./savedData/trainingData.csv").toString();
+		// Define the file path based on the provided relative path
+		var intnum = current().nextInt(10);
+		if (lastMoveDirection == 0 && intnum != 1) {
+			return;
+		}
 
-	    try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath, true))) {
-	        // Write data
-	        for (int i = 0; i < trainingRow.length - 1; i++) {
-	            writer.write(trainingRow[i] + ",");
-	        }
-	        writer.write(Double.toString(trainingRow[trainingRow.length - 1])); // Last value without a trailing comma
-	        writer.write("," + lastMoveDirection);
-	        writer.newLine();
-	    } catch (IOException e) {
-	        e.printStackTrace(); // Handle the exception
-	    }
+		System.out.println("saved");
 
-	    // Print the sampled data
-	    System.out.println(Arrays.toString(trainingRow)+lastMoveDirection);
+		String filePath = Paths.get("./resources/trainingData.csv").toString();
+		String filePath1 = Paths.get("./resources/lastMoveDirection.csv").toString();
+
+		try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath, true));
+				BufferedWriter writer1 = new BufferedWriter(new FileWriter(filePath1, true));) {
+			// Write data
+			for (int i = 0; i < trainingRow.length - 1; i++) {
+				writer.write(trainingRow[i] + ",");
+			}
+			writer.write(Double.toString(trainingRow[trainingRow.length - 1])); // Last value without a trailing comma
+			writer1.write(lastMoveDirection + "\n"); // Write last move direction
+			lastMoveDirection = 0;
+			writer.newLine();
+		} catch (IOException e) {
+			e.printStackTrace(); // Handle the exception
+		}
 	}
 
 	/*
 	 * Resets and restarts the game when the "S" key is pressed
 	 */
 	public void reset() {
+		prevTop = MIN_TOP;
+		prevBot = MIN_BOTTOM;
 		model.stream() // Zero out the grid
 				.forEach(n -> Arrays.fill(n, 0, n.length, ZERO_SET));
 		playerRow = 11; // Centre the plane
